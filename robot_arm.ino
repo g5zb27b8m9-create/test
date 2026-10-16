@@ -1,4 +1,5 @@
 #include <Servo.h>
+#include <math.h>
 
 Servo base, fArm, rArm, claw;
 
@@ -7,7 +8,13 @@ const int fArmMin = 30, fArmMax = 180;
 const int rArmMin = 30, rArmMax = 180;
 const int clawMin = 10, clawMax = 120;
 
-int moveDelay = 15;        
+const float L1=80.0;//大臂长
+const float L2=80.0;//小臂长
+const float H1=55.0;//底座高度
+const float UP=30.0;//抬笔高度
+const float DOWN=10.0;//落笔高度
+
+int moveDelay = 30;        
 String cmd = "";           
 int taskIndex = 0;        
 
@@ -35,6 +42,8 @@ void restore();
 void reportStatus();
 bool joystickControl();
 int  qz(float v);
+void servoMoveTo(float x,float y,float z);
+void drawLine(float x1,float y1,float x2,float y2);
 
 void setup() {
   base.attach(9);  delay(200);
@@ -51,9 +60,6 @@ void setup() {
   pinMode(A1, INPUT);
   pinMode(A2, INPUT);
   pinMode(A3, INPUT);
-
-  pinMode(btnA, INPUT_PULLUP);
-  pinMode(btnB, INPUT_PULLUP);
 
   Serial.begin(9600);
   Serial.println(F("begin"));
@@ -117,6 +123,18 @@ void handleCmd(String Cmd) {
     return;
   }
 
+  if(head=='E'){  
+    Serial.println(F("画直线"));
+    drawLine(3.0,3.0,10.0,3.0);
+  }
+
+  if(head=='V'){
+    Serial.println(F("画V"));
+    drawLine(5.0,5.0,15.0,5.0);
+    delay(300);
+    drawLine(15.0,5.0,7.0,10.0);
+  }
+
   Serial.print(F("未知指令: "));
   Serial.println(cmd);
 }
@@ -136,7 +154,8 @@ void servoDataCmd(char serialCmd) {
     case 'H':
       moveDelay = max(2, moveDelay - 10);               
       Serial.print(F("Speed Up, moveDelay="));
-          break;
+      Serial.println(moveDelay);
+      break;
 
     case 'L':
       moveDelay = min(50, moveDelay + 10);
@@ -349,37 +368,37 @@ void ABC(char serialCmd){
     delay(300);
     claw.write(clawMax);
     delay(300);
-    servoMove(90,85,120);//抬起
+    servoMove(90,180,90);//抬起
     delay(300);
-    servoMove(30,75,120);//移动到放置地
+    servoMove(30,180,90);//移动到放置地
     delay(300);
     servoMove(30,85,149);//下降
     delay(300);
     claw.write(clawMin);
     delay(300);
-    servoMove(30,85,90);//抬起
+    servoMove(30,180,90);//抬起
     delay(300);
     restore();
     delay(300);
   }
   else if(serialCmd=='B'){
-    servoMove(120,180,90);//移动到B的上方
+    servoMove(140,180,90);//移动到B的上方
     delay(300);
-    servoMove(120,108,90);//下降
+    servoMove(140,108,90);//下降
     delay(300);
-    servoMove(120,108,112);//下降
+    servoMove(140,108,112);//下降
     delay(300);
     claw.write(clawMax);
     delay(300);
-    servoMove(120,85,120);//抬起
+    servoMove(140,180,70);//抬起
     delay(300);
-    servoMove(60,85,120);//移动到放置地
+    servoMove(60,180,70);//移动到放置地
     delay(300);
     servoMove(60,108,112);//下降
     delay(300);
     claw.write(clawMin);
     delay(300);
-    servoMove(60,85,90);//抬起
+    servoMove(60,180,70);//抬起
     delay(300);
     restore();
     delay(300);
@@ -393,15 +412,15 @@ void ABC(char serialCmd){
     delay(300);
     claw.write(100);
     delay(300);  
-    servoMove(60,85,120);//抬起
+    servoMove(60,180,70);//抬起
     delay(300);
-    servoMove(150,85,120);//移动到放置地
+    servoMove(150,180,70);//移动到放置地
     delay(300);
     servoMove(150,122,156);//下降
     delay(300);
     claw.write(clawMin);
     delay(300);
-    servoMove(150,85,90) ;//抬起
+    servoMove(150,180,70) ;//抬起
     delay(300);
     restore();
     delay(300);
@@ -419,6 +438,37 @@ void runCycle() {  //循环ABC
     
 }
 
+void servoMoveTo(float x,float y,float z){
+  float d=sqrt(x*x+y*y);
+  float h=z-H1;
+  float L3=sqrt(d*d+h*h);
+  float theta_base=atan2(x,y);
+  float cos_theta1=(L1*L1+L2*L2-L3*L3)/(2*L1*L2);
+  float theta1=acos(cos_theta1);
+  float theta4=atan2(h,d);
+  float cos_theta3=(L1*L1+L3*L3-L2*L2)/(2*L1*L3);
+  float theta3=acos(cos_theta3);
+  float theta2=(PI/2)+theta3+theta4;
+  float base_deg=theta_base*180.0/PI;
+  float fArm_deg=theta2*180.0/PI;
+  float rArm_deg=theta1*180.0/PI;
+  int finalBase=60+base_deg;
+  int finalFArm=90+fArm_deg;
+  int finalRArm=180-rArm_deg;
+  servoMove(finalBase,finalRArm,finalFArm);
+}
+
+void drawLine(float x1,float y1,float x2,float y2){
+  servoMoveTo(x1,y1,UP);
+  servoMoveTo(x1,y1,DOWN);
+  int steps=50;//分成五十步
+  for(int i=0;i<=steps;i++){
+    float curX=x1+(x2-x1)*i/steps;
+    float curY=y1+(y2-y1)*i/steps;
+    servoMoveTo(curX,curY,DOWN);
+  }
+  servoMoveTo(x2,y2,UP);
+}
 
 int qz(float v) {   //四舍五入取整                     
   return (int)(v + (v >= 0 ? 0.5f : -0.5f));
